@@ -1,3 +1,5 @@
 import visa
 rm = visa.ResourceManager('@py')
-rm.list_resources('/dev/ttyUSB0')
+inst = rm.open_resource('USB0::0x0957::0x0407::SG44000971::INSTR')
+inst.write("APPLy:SQUare 10000, 1, 0")
+#query
