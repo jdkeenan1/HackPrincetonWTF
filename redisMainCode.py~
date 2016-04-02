@@ -1,0 +1,245 @@
+#!/usr/bin/env python
+import redis
+import glob
+import time
+import serial
+
+#from boto.s3.connection import S3Connection
+
+#currentBucket = conn.get_bucket('hackprincetonee')
+#from boto.s3.key import Key
+
+glist = glob.glob('/dev/ttyUSB*') + glob.glob('/dev/ttyACM*') + glob.glob('/dev/tty.u*')
+ser = serial.Serial(glist[0], 9600, timeout=2.0)
+import visa
+import json
+rm = visa.ResourceManager('@py')
+inst = rm.open_resource('USB0::0x0957::0x0407::SG44000971::INSTR')
+
+r = redis.StrictRedis(host='104.236.205.31',port=6379,db=0)
+pubsub = r.pubsub()
+pubsub.subscribe("boss")
+next(pubsub.listen())
+isquery = 0
+print "listening"
+
+#function Generator
+outputString = []
+
+def applyFunction():
+	outputString = ['APPLy']
+	
+	def SINusoid():
+		outputString.append(':SINusoid')
+	def SQUare():
+		outputString.append(':SQUare')
+	def RAMP():
+		outputString.append(':RAMP')
+	def PULSe():
+		outputString.append(':PULSe')
+	def NOISe():
+		outputString.append(':NOISe')
+	def DC():
+		outputString.append(':DC')
+	def USER():
+		outputString.append(':USER')
+	switcher1 = {
+		'sin': SINusoid,
+		'square': SQUare,
+		'ramp': RAMP,
+		'pulse': PULSe,
+		'noise': NOISe,
+		'dc': DC,
+		'user': USER
+	}
+	func1 = switcher1.get(command[1], lambda: "not valid")
+	func1()
+	for i, item in enumerate(command):
+		if i > 1:
+			outputString.append(" "+item+",")
+	output = ''.join(outputString)
+	print output
+	inst.write(output)
+########
+def genFreq():
+	outputSignal = 'FREQuency '+ command[1]
+	inst.write(outputSignal)
+def genVoltage():
+	outputSignal = 'VOLTage '+ command[1]
+	inst.write(outputSignal)
+def voltageOffset():
+	outputSignal = 'VOLTage:OFFSet '+ command[1]
+	inst.write(outputSignal)
+
+def valueGen(factor):
+	def genFreq1():
+		inst.write('FREQuency?\r')
+		time.sleep(.05)
+		incoming = inst.read_raw()
+		print incoming
+		command[1] = incoming*factor
+		genFreq()
+	def genVoltage1():
+		inst.write('VOLTage?\r')
+		incoming = inst.read_raw()
+		print incoming
+		command[1] = incoming*factor
+		genVoltage()
+	def voltageOffset1():
+		inst.write('VOLTage:OFFSet?\r')
+		incoming = inst.read_raw()
+		print incoming
+		command[1] = incoming*factor
+		voltageOffset()
+	switcher1 = {
+		'frequency': genFreq1,
+		'voltage': genVoltage1,
+		'voltageoffset': voltageOffset1
+	}
+	func1 = switcher1.get(command[1], lambda: "not valid")
+	func1()
+
+def doubleGen():
+	valueGen(2.0)
+def halfGen():
+	valueGen(0.5)
+def tripleGen():
+	valueGen(3)
+
+def loadGen():
+	outputSignal = 'OUTPut:LOAD '+ command[1]
+	inst.write(outputSignal)
+def periodGen():
+	outputSignal = 'PULSe:PERiod '+ command[1]
+	inst.write(outputSignal)
+def sweepGen():
+	outputSignal = 'FREQuency:STARt '+ command[1]
+	inst.write(outputSignal)
+	time.sleep(.5)
+	outputSignal = 'FREQuency:STOP '+ command[2]
+	inst.write(outputSignal)
+#function generator end.
+
+#turn on or off auto range, command = ['AUTORange',{' OFF',' ON','?'}]
+def AUTORange():
+	s = 'AUTORange:STATE' + command[1] + '\r'
+	ser.write(s)
+#AUTOSET to display a stable waveform, command = ['AUTOSet']
+def AUTOSet():
+	ser.write('AUTOSet EXECute\r')
+#channel settings, command = ['CH',<numb>,<option>,<value>]
+#'?'-all settings, 'BANdwidth ON/OFF', 'COUPling AC/DC/GND', 'INVert ON/OFF',
+#'POSition <val>', 'SCALe <val>', 'YUNit "V"/"A"'
+#<value> must have a space first unless '?'
+def CH():
+	s = 'CH' + command[1] + ':' + command[2] + command[3] + '\r'
+	ser.write(s)
+#cursor settings, command = ['cursor',<option>,<value>]
+#'?'-all settings, 'FUNCtion HBArs/OFF/VBArs' - can add ':DELTA/:POSITION/:UNIts?'
+# <value> should start with a space unless '?'
+def cursor():
+	s = 'CURSor:' + command[1] + command[2] + '\r'
+	ser.write(s)
+#get waveform data, command = ['curve',{' <Block>',' <asc curve','?'}]
+def curve():
+	s = 'CURVe' + command[1] + '\r'
+	ser.write(s)
+#display settings, command = ['display',<option>,<value>]
+#'?', 'BRIGHTness <num>', CONTRast <num>, FORMat XY/YT, INVert ON/OFF, STYle DOTs/VECtors
+#<value< should start with a space unless '?'
+def display():
+	s = 'DISplay:' + command[1] + command[2] + '\r'
+	ser.write(s)
+#harmonics settings and analysis, command = ['harmonics',<option>,<value>]
+#'?', ENABle ON/OFF, SELect <num>, SHOW ALL/ODD/EVEN, SOUrce CH<x>
+#query only: FREquency, HRMS, PERCent, PHAse, RMS, THDF
+#<value> should start with a space unless '?'
+def harmonics():
+	s = 'HARmonics:' + command[1] + command[2] + '\r'
+	ser.write(s)
+#horizontal settings (assumes main), command = ['horizontal',<option>,<value>]
+#'?', POSition <num>, SCAle <num>, VIEW MAIn/WINDOW/ZONE
+#<value> should start with a space unless '?'
+def horizontal():
+	s = 'HORizontal:' + command[1] + command[2] + '\r'
+	ser.write(s)
+#measurements, command = ['measurement',<meas numb>,<option>,<value>]
+#<meas numb> specifies the measurement 1 through 5
+#'?',SOUrce CH<y>, TYPE FREQuency/MEAN/PERIod/PK2pk/CRMs/MINImum/MAXImum/RISe/FALL/PWIdth/NWIdth/NONe
+#query only: UNIts, VALue
+#<value> should start with a space unless '?'
+def measurement():
+	s = 'MEASUrement:MEAS' + command[1] +':' + 'SOUrce ' + command[2] + '\r'
+	print s
+	ser.write(s)
+	time.sleep(.5)
+	if len(command) > 3:
+		s = 'MEASUrement:MEAS' + command[1] +':' + 'TYPE ' + command[3] + '\r'
+		print s
+		ser.write(s)
+		time.sleep(.5)
+	s = 'MEASUrement:MEAS'  + command[1] + ':VALue?\r'
+	print s	
+	ser.write(s)
+	result = float(ser.readline())
+	print result
+	if result > 9.0E36:
+		measurement()
+		return
+	print result
+	command[0] = 11
+	command[1] = result
+
+#grab an image
+def copy():
+	s = 'HARDCopy STARt\r'
+	print "grabbing screenshot"
+	f = open('output.bmp','w')
+	timeout = time.time() + 20
+	ser.write(s)
+	while time.time() < timeout:
+		f.write(ser.read())
+	f.close()
+	print "done"
+	#k = Key(currentBucket)
+	#k.key('output')
+	#k.set_contents_from_filename('output.bmp')	
+	#command[1]
+	def readFile():
+		with open('output.bmp','rb') as f:
+			return f.read()
+	r.publish(str(command[1]),readFile())
+
+while True:
+	for item in pubsub.listen():
+		#we have a packet....
+		command = json.loads(item['data'])
+		print command		
+		switcher = {
+			'copy': copy,
+			'AUTORange': AUTORange,
+			'AUTOSet': AUTOSet,
+			'CH': CH,
+			'cursor': cursor,
+			'curve': curve,
+			'display': display,
+			'harmonics': harmonics,
+			'horizontal': horizontal,
+			'measurement': measurement,
+			#here we add function codes
+			'apply': applyFunction,
+			'frequency': genFreq,
+			'voltage': genVoltage,
+			'voltageoffset': voltageOffset,
+			'double': doubleGen,
+			'half': halfGen,
+			'triple': tripleGen,
+			'load': loadGen,
+			'period': periodGen,
+			'sweep': sweepGen
+		}
+		func = switcher.get(command[0], lambda: "not valid")
+		func()
+		if command[0] == 11:
+			r.publish("results",str(round(command[1],3)))
+		isquery = 0 

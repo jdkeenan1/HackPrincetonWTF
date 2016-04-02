@@ -65,27 +65,29 @@ def horizontal():
 #'?',SOUrce CH<y>, TYPE FREQuency/MEAN/PERIod/PK2pk/CRMs/MINImum/MAXImum/RISe/FALL/PWIdth/NWIdth/NONe
 #query only: UNIts, VALue
 #<value> should start with a space unless '?'
-def measurements():
+def measurement():
 	s = 'MEASUrement:MEAS' + command[1] +':' + command[2] + '\r'
 	ser.write(s)
-
-switcher = {
-	'copy': copy,
-	'AUTORange': AUTORange,
-	'AUTOSet': AUTOSet,
-	'CH': CH,
-	'cursor': cursor,
-	'curve': curve,
-	'display': display,
-	'harmonics': harmonics,
-	'horizontal': horizontal,
-	'measurement': measurement
-}
-func = switcher.get(command[0], lambda: "not valid")
-func()
-
-if isquery:
-	result = ser.readline()
+while 1:
+	var = raw_input("Please enter something: ")
+	command = var.split()
+	switcher = {
+		'copy': copy,
+		'AUTORange': AUTORange,
+		'AUTOSet': AUTOSet,
+		'CH': CH,
+		'cursor': cursor,
+		'curve': curve,
+		'display': display,
+		'harmonics': harmonics,
+		'horizontal': horizontal,
+		'measurement': measurement
+	}
+	func = switcher.get(command[0], lambda: "not valid")
+	func()
+	
+	if isquery:
+		result = ser.readline()
 	isquery = 0
 
 #change scale
