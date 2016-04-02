@@ -19,7 +19,7 @@ inst = rm.open_resource('USB0::0x0957::0x0407::SG44000971::INSTR')
 
 
 #case statement
-#command = ['AUTORange','?'] #get from lambda function
+command = ['AUTORange','?'] #get from lambda function
 #example of applying a command
 def applyFunction():
 	def SINusoid:
