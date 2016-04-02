@@ -11,95 +11,11 @@ import os
 import serial
 glist = glob.glob('/dev/ttyUSB*') + glob.glob('/dev/ttyACM*')
 ser = serial.Serial(glist[0], 9600)
-f = open('/home/pi/currentDEVICESET', 'r') 
-DEVICE = f.read()
-f.close()
-import sys
-import time
-from boto import dynamodb2
-from boto.dynamodb2.table import Table
-from boto.s3.connection import S3Connection
+#case statement
 
-TABLE_NAME = ""
-REGION = "us-west-2"
-conn = dynamodb2.connect_to_region(
-	REGION,
-	aws_access_key_id='AKIAICN44BGVRGEMGI3Q',
-	aws_secret_access_key='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')
+#change scale
+ser.write('CH1:SCAle 10e-2\r')
 
-table = Table('aecdevice', connection=conn)
-try:
-	item = table.get_item(deviceName=DEVICE)
-	print item
-except:
-	item = False
-testfunction = True
-while (item):
-	print "yes, We have a match"
-	timeStep = 0.005;
-	item = table.get_item(deviceName=DEVICE)
-	s = ser.readline()
-	s = ser.readline()
-
-	batteryNumber = int(item['Data']['BatteryPercentage']/20)
-	if testfunction:
-		battery = item['Data']['BatteryPercentage']
-		testfunction = False
-	print batteryNumber
-	ser.write(str(batteryNumber))
-	# we have a print
-	# now we need to retrieve and download that print along with upadte that user that his print is currently being printed
-	incomingFrequency = float(s.split(',')[0])
-	incomingFrequency = (incomingFrequency-60.0)/35.0+60.0
-	item['Data']['Frequency'] = incomingFrequency
-	incomingSolarPower = int(s.split(',')[1])
-	incomingSolarPower = (incomingSolarPower-37)/20*100/8
-	if (incomingSolarPower < 0):
-		incomingSolarPower = 0;
-	
-	if (incomingSolarPower > 100):
-		incomingSolarPower = 100
-	incomingSolarPower = incomingSolarPower
-	battery = float(battery) + float(timeStep)*float(incomingSolarPower)/100;
-	item['Data']['Intensity'] = incomingSolarPower
-	appliance1 = int(s.split(',')[2])
-	if (appliance1 == 1):
-		battery = battery - (1.0*timeStep)
-	
-	item['Data']['Button1'] = appliance1
-	appliance2 = int(s.split(',')[3])
-	if (appliance2 == 1):
-		battery = battery - (3.0*timeStep)
-	
-	item['Data']['Button2'] = appliance2
-	print incomingFrequency
-	if (incomingFrequency > 60.5):
-		#we need to take power
-		item['Data']['Grid'] = int(-3.3)
-	else:
-		if (incomingFrequency < 59.5):
-			#supply Power
-			item['Data']['Grid'] = int(3.3)
-		else:
-			item['Data']['Grid'] = 0
-	print item['Data']['Grid']
-	print battery
-	battery = float(battery) + (-1*float(item['Data']['Grid']) * timeStep)
-	print battery
-	item['Data']['BatteryPercentage'] = round(battery,0)
-	if battery > 100.0:
-		item['Data']['BatteryPercentage'] = 100.0
-		battery = 100.0
-	
-	item['Data']['Frequency'] = round(item['Data']['Frequency']*10,0)
-	print item['Data']['Frequency']
-	print item['Data']['Grid']
-	print item['Data']['BatteryPercentage']
-	item.save(overwrite=True)
-	time.sleep(.5)
-	ser.flushInput()
-	
-	# here we grab from the s3 bucket
 	# conns3 = S3Connection('AKIAICN44BGVRGEMGI3Q', 'ugchXirJEneSZA0xfSFRCqUeLUZr7yERGTNkUEY0')
 	# print item['queue'][0]
 	# fileName = ''
