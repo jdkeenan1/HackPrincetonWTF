@@ -10,7 +10,7 @@ import serial
 #from boto.s3.key import Key
 
 glist = glob.glob('/dev/ttyUSB*') + glob.glob('/dev/ttyACM*') + glob.glob('/dev/tty.u*')
-ser = serial.Serial(glist[0], 9600, timeout=2.0)
+ser = serial.Serial(glist[0], 19200, timeout=3.0)
 import visa
 import json
 rm = visa.ResourceManager('@py')
@@ -181,7 +181,11 @@ def measurement():
 	s = 'MEASUrement:MEAS'  + command[1] + ':VALue?\r'
 	print s	
 	ser.write(s)
-	result = float(ser.readline())
+	try:
+		result = float(ser.readline())
+	except:
+		measurement()
+		return
 	print result
 	if result > 9.0E36:
 		measurement()
@@ -195,10 +199,15 @@ def copy():
 	s = 'HARDCopy STARt\r'
 	print "grabbing screenshot"
 	f = open('output.bmp','w')
-	timeout = time.time() + 20
+	timeout = time.time() + 60
 	ser.write(s)
+	time.sleep(4)
 	while time.time() < timeout:
-		f.write(ser.read())
+		d = ser.read()
+		if d == "":
+			print "break"
+			break
+		f.write(d)
 	f.close()
 	print "done"
 	#k = Key(currentBucket)
@@ -208,7 +217,7 @@ def copy():
 	def readFile():
 		with open('output.bmp','rb') as f:
 			return f.read()
-	r.publish(str(command[1]),readFile())
+	r.publish(command[1],readFile())
 
 while True:
 	for item in pubsub.listen():
