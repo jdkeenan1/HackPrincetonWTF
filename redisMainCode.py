@@ -3,6 +3,7 @@ import redis
 import glob
 import time
 import serial
+import requests
 
 #from boto.s3.connection import S3Connection
 
@@ -72,25 +73,36 @@ def voltageOffset():
 	inst.write(outputSignal)
 
 def valueGen(factor):
+	#inst.flush()
+	inst.write("APPLy?\r")
+	timeout = time.time() + 1
+	incoming = 0
+	def grabPacket():
+		while time.time() < timeout:
+			try:
+				incoming = inst.read_raw()
+				break
+			except:
+				#nothing
+				#inst.write('VOLTage?\r')
+				print "failed"
+		return incoming
+	incoming = grabPacket()
+	if incoming == 0:
+		incoming = grabPacket()
+	print incoming
+	incomingPacket = incoming[4:-1].split(',')
+	
 	def genFreq1():
-		inst.write('FREQuency?\r')
-		time.sleep(.05)
-		incoming = inst.read_raw()
-		print incoming
-		command[1] = incoming*factor
+		command[1] = str(float(incomingPacket[0])*factor)
 		genFreq()
 	def genVoltage1():
-		inst.write('VOLTage?\r')
-		incoming = inst.read_raw()
-		print incoming
-		command[1] = incoming*factor
+		command[1] = str(float(incomingPacket[1])*factor)
 		genVoltage()
 	def voltageOffset1():
-		inst.write('VOLTage:OFFSet?\r')
-		incoming = inst.read_raw()
-		print incoming
-		command[1] = incoming*factor
+		command[1] = str(float(incomingPacket[2])*factor)
 		voltageOffset()
+
 	switcher1 = {
 		'frequency': genFreq1,
 		'voltage': genVoltage1,
@@ -142,7 +154,7 @@ def cursor():
 	ser.write(s)
 #get waveform data, command = ['curve',{' <Block>',' <asc curve','?'}]
 def curve():
-	s = 'DATa:SOUrce'+ command[1] + '\r'
+	s = 'DATa:SOUrce CH'+ command[1] + '\r'
 	ser.write(s)
 	s = 'DATa:STARt 1\r'
 	ser.write(s)
@@ -200,6 +212,12 @@ def curve():
 		yValue = (float(y)-float(dictReturn['yOff']))*float(dictReturn['yMult'])+float(dictReturn['yZero'])
 		outputWaveform.append([xValue,yValue])
 	print outputWaveform
+	s = "ACQuire:STATE RUN\r"
+	ser.write(s)
+	output = "{"+",".join(["{"+str(w[0])+","+str(w[1])+"}" for w in outputWaveform])+"}"
+	result = requests.post('http://www.wolframcloud.com/objects/149f44aa-f687-4ca1-9e81-3519715e7498',data={"x":output}).text
+	print result
+	r.publish("results",result.split('"')[1])
 	#s = 'DATa:ENCdg?'
 	#s = 'DATa:WIDth?'
 	#WFMPRe?
@@ -238,23 +256,26 @@ def horizontal():
 #query only: UNIts, VALue
 #<value> should start with a space unless '?'
 def measurement():
-	s = 'MEASUrement:MEAS' + command[1] +':' + 'SOUrce ' + command[2] + '\r'
+	s = 'MEASUrement:IMMed:SOUrce1 ' + command[2] + '\r'
 	print s
 	ser.write(s)
 	time.sleep(.5)
 	if len(command) > 3:
-		s = 'MEASUrement:MEAS' + command[1] +':' + 'TYPE ' + command[3] + '\r'
+		s = 'MEASUrement:IMMed:TYPe ' + command[3] + '\r'
 		print s
 		ser.write(s)
 		time.sleep(.5)
-	s = 'MEASUrement:MEAS'  + command[1] + ':VALue?\r'
+	#s = 'MEASUrement:MEAS'  + command[1] + ':VALue?\r'
+	s = 'MEASUrement:IMMed:Value?\r'
 	print s	
 	ser.write(s)
+	time.sleep(1)
 	try:
-		result = float(ser.readline())
+		result = ser.readline()
 	except:
 		measurement()
 		return
+	result = float(result[25:])
 	print result
 	if result > 9.0E36:
 		measurement()
@@ -293,7 +314,7 @@ while True:
 		#we have a packet....
 		command = json.loads(item['data'])
 		print command	
-		command = ['curve','CH1']	
+		#command = ['curve','CH1']	
 		switcher = {
 			'copy': copy,
 			'AUTORange': AUTORange,
