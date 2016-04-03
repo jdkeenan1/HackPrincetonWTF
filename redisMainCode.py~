@@ -10,7 +10,7 @@ import serial
 #from boto.s3.key import Key
 
 glist = glob.glob('/dev/ttyUSB*') + glob.glob('/dev/ttyACM*') + glob.glob('/dev/tty.u*')
-ser = serial.Serial(glist[0], 19200, timeout=3.0)
+ser = serial.Serial(glist[0], 9600, timeout=2.0)
 import visa
 import json
 rm = visa.ResourceManager('@py')
@@ -142,14 +142,83 @@ def cursor():
 	ser.write(s)
 #get waveform data, command = ['curve',{' <Block>',' <asc curve','?'}]
 def curve():
-	s = 'CURVe' + command[1] + '\r'
+	s = 'DATa:SOUrce'+ command[1] + '\r'
 	ser.write(s)
+	s = 'DATa:STARt 1\r'
+	ser.write(s)
+	s = 'DATa:STOP 1000\r'
+	ser.write(s)
+	s = 'acquire:stopafter sequence\r'
+	ser.write(s)
+	s = 'acquire:state on\r'
+	ser.write(s)
+	time.sleep(3)
+	s = "DATa:ENCdg ASCIi\r"
+	ser.write(s)
+	s = "CURVe?\r"
+	ser.write(s)
+	waveform = ser.readline()
+	#250 points x per division
+	#50 points y per division
+	waveformArray = waveform[7:-1].split(',')
+	print waveformArray
+	s = 'WFMPre?\r'
+	ser.write(s)
+	labels = ser.readline()
+	labelsArray = labels[0:-1].split(';')
+	WFIDArray = labelsArray[6].split(',')
+	dictReturn = {
+		"sampleSize": labelsArray[5][6:],
+		"ch": WFIDArray[0][6:],
+		"verticalScale": WFIDArray[2].split(' ')[1:],
+		"hoziontalScale": WFIDArray[3].split(' ')[1:],
+		"xIncrement": labelsArray[8][6:],
+		"xZero": labelsArray[10][6:],
+		"xUnit": labelsArray[11][7:-1],
+		"yMult": labelsArray[12][6:],
+		"yZero": labelsArray[13][6:],
+		"yOff": labelsArray[14][5:],
+		"yUnit": labelsArray[15][7:-1]
+	}
+	print dictReturn
+	
+	#5 Sample Width
+	#6 V/div, s/div
+	#8 increment x
+	#10 Xzero point at which we sample
+	#11 units X
+	#12 Y increment
+	#13 YZERO
+	#14 YOFF
+	#15 Yunits Y
+	print labels
+
+	#here we make the right data points
+	outputWaveform = []
+	for i, y in enumerate(waveformArray):
+		xValue = float(dictReturn['xZero'])+float(dictReturn['xIncrement'])*i
+		yValue = (y-float(dictReturn['yOff']))*float(dictReturn['yMult'])+float(dictReturn['yZero'])
+		outputWaveform.append([xValue,yValue])
+	print outputWaveform
+	#s = 'DATa:ENCdg?'
+	#s = 'DATa:WIDth?'
+	#WFMPRe?
+	#s = 'CURVe' + command[1] + '\r'
+	#ser.write(s)
+	#print "curves!"
+	#while True:
+	#	val = ser.readline()
+	#	print val
+	#	if len(val) == 0:
+	#		break
+	#	print val
 #display settings, command = ['display',<option>,<value>]
 #'?', 'BRIGHTness <num>', CONTRast <num>, FORMat XY/YT, INVert ON/OFF, STYle DOTs/VECtors
 #<value< should start with a space unless '?'
 def display():
 	s = 'DISplay:' + command[1] + command[2] + '\r'
 	ser.write(s)
+	
 #harmonics settings and analysis, command = ['harmonics',<option>,<value>]
 #'?', ENABle ON/OFF, SELect <num>, SHOW ALL/ODD/EVEN, SOUrce CH<x>
 #query only: FREquency, HRMS, PERCent, PHAse, RMS, THDF
@@ -223,7 +292,8 @@ while True:
 	for item in pubsub.listen():
 		#we have a packet....
 		command = json.loads(item['data'])
-		print command		
+		print command	
+		command = ['curve','CH1']	
 		switcher = {
 			'copy': copy,
 			'AUTORange': AUTORange,
